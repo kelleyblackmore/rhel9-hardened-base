@@ -3,3 +3,7 @@
 
 # Runtime scan outputs (generate with: make scan-all)
 results/
+
+# Python bytecode
+__pycache__/
+*.pyc

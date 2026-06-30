@@ -1,0 +1,5 @@
+# Locally installed scanner binaries
+.tools/
+
+# Runtime scan outputs (generate with: make scan-all)
+results/

@@ -1,0 +1,51 @@
+# syntax=docker/dockerfile:1
+# =============================================================================
+# OpenSCAP scanner layer for the hardened UBI9 base.
+# This image is for COMPLIANCE VERIFICATION ONLY -- it is NOT the shipped base.
+#
+# UBI 9 repos ship `openscap-scanner` but NOT `scap-security-guide` (the DISA
+# RHEL 9 STIG datastream) or `openscap-utils` (`autotailor`). We pull those from
+# the Rocky Linux 9 repos -- Rocky is a bit-for-bit RHEL 9 rebuild, so its
+# scap-security-guide carries the same DISA STIG content as RHEL 9.
+# =============================================================================
+ARG BASE_IMAGE=localhost/rhel9-hardened:latest
+FROM ${BASE_IMAGE}
+
+# Need root to install the scanner and to read protected files during the scan.
+USER 0
+
+# Rocky 9 repos for scap-security-guide + openscap-utils (autotailor).
+RUN cat > /etc/yum.repos.d/rocky-scap.repo <<'EOF'
+[rocky-baseos]
+name=Rocky Linux 9 - BaseOS
+baseurl=https://dl.rockylinux.org/pub/rocky/9/BaseOS/x86_64/os/
+gpgcheck=1
+gpgkey=https://dl.rockylinux.org/pub/rocky/RPM-GPG-KEY-Rocky-9
+enabled=1
+[rocky-appstream]
+name=Rocky Linux 9 - AppStream
+baseurl=https://dl.rockylinux.org/pub/rocky/9/AppStream/x86_64/os/
+gpgcheck=1
+gpgkey=https://dl.rockylinux.org/pub/rocky/RPM-GPG-KEY-Rocky-9
+enabled=1
+EOF
+
+#   openscap-scanner      -> the `oscap` binary
+#   scap-security-guide   -> /usr/share/xml/scap/ssg/content/ssg-rhel9-ds.xml + DISA STIG profile
+#   openscap-utils        -> `autotailor` for generating the tailoring ("answer") file
+RUN set -eux; \
+    dnf -y install --setopt=install_weak_deps=0 \
+      openscap-scanner \
+      scap-security-guide \
+      openscap-utils; \
+    test -f /usr/share/xml/scap/ssg/content/ssg-rhel9-ds.xml; \
+    command -v autotailor; \
+    dnf -y clean all
+
+COPY oscap/scan.sh /usr/local/bin/scan.sh
+COPY oscap/generate-tailoring.sh /usr/local/bin/generate-tailoring.sh
+COPY oscap/ /scan/oscap/
+RUN chmod +x /usr/local/bin/scan.sh /usr/local/bin/generate-tailoring.sh
+
+WORKDIR /scan
+ENTRYPOINT ["/usr/local/bin/scan.sh"]

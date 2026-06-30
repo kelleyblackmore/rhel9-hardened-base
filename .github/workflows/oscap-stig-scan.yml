@@ -1,0 +1,77 @@
+name: OpenSCAP DISA RHEL 9 STIG
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: ['**']
+  workflow_dispatch:
+
+jobs:
+  stig-scan:
+    name: Build, harden, and STIG-scan the UBI9 base
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build hardened base
+        run: docker build -f Containerfile -t localhost/rhel9-hardened:latest .
+
+      - name: Build OpenSCAP scanner image
+        run: |
+          docker build -f oscap/Containerfile.scan \
+            --build-arg BASE_IMAGE=localhost/rhel9-hardened:latest \
+            -t localhost/rhel9-hardened-scan:latest .
+
+      - name: Baseline STIG scan
+        run: |
+          docker rm -f rhel9-stig-baseline 2>/dev/null || true
+          docker run --name rhel9-stig-baseline localhost/rhel9-hardened-scan:latest || true
+          mkdir -p oscap/results/baseline
+          docker cp rhel9-stig-baseline:/scan/results/. oscap/results/baseline/
+          docker rm -f rhel9-stig-baseline
+
+      - name: Tailored + remediated STIG scan
+        run: |
+          docker rm -f rhel9-stig-tailored 2>/dev/null || true
+          docker run --name rhel9-stig-tailored \
+            -e TAILORING_FILE=/scan/oscap/tailoring/tailoring-rhel9-stig-container.xml \
+            -e TAILORING_PROFILE=xccdf_mil.disa.stig_profile_stig_container \
+            -e REMEDIATE=true \
+            localhost/rhel9-hardened-scan:latest || true
+          mkdir -p oscap/results/tailored
+          docker cp rhel9-stig-tailored:/scan/results/. oscap/results/tailored/
+          docker rm -f rhel9-stig-tailored
+
+      - name: Compliance gate (tailored profile must meet threshold)
+        env:
+          THRESHOLD: '100'
+        run: |
+          summary="oscap/results/tailored/summary.txt"
+          cat "$summary"
+          score=$(awk -F': *' '/^score/{gsub(/%/,"",$2); print $2}' "$summary")
+          echo "Tailored STIG score: ${score}% (threshold ${THRESHOLD}%)"
+          if [ -z "$score" ] || [ "$score" -lt "$THRESHOLD" ]; then
+            echo "::error::STIG compliance ${score}% is below threshold ${THRESHOLD}%"
+            exit 1
+          fi
+
+      - name: Upload OpenSCAP reports (HTML + ARF)
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: oscap-stig-reports
+          path: |
+            oscap/results/baseline/report.html
+            oscap/results/baseline/results-arf.xml
+            oscap/results/baseline/summary.txt
+            oscap/results/tailored/report.html
+            oscap/results/tailored/results-arf.xml
+            oscap/results/tailored/summary.txt
+          retention-days: 30

@@ -1,0 +1,122 @@
+name: Build and Push Container Image
+
+on:
+  push:
+    branches:
+      - main  # Only run on main branch pushes
+    tags:
+      - 'v*'
+  workflow_dispatch:  # Allow manual triggering
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Needed for creating tags and releases
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch all history for tags
+
+      - name: Generate version tag for main branch
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        id: version
+        run: |
+          # Get the latest tag, default to 0.0.0 if none exists
+          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          echo "Latest tag: $LATEST_TAG"
+          
+          # Remove 'v' prefix and split version
+          VERSION=${LATEST_TAG#v}
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
+          
+          # Increment patch version
+          NEW_PATCH=$((PATCH + 1))
+          NEW_VERSION="v${MAJOR}.${MINOR}.${NEW_PATCH}"
+          
+          # If this is the very first tag, start with v0.0.1
+          if [ "$LATEST_TAG" = "v0.0.0" ]; then
+            NEW_VERSION="v0.0.1"
+          fi
+          
+          echo "New version: $NEW_VERSION"
+          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "version_no_v=${NEW_VERSION#v}" >> $GITHUB_OUTPUT
+
+      - name: Create and push tag
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a ${{ steps.version.outputs.version }} -m "Auto-release ${{ steps.version.outputs.version }}"
+          git push origin ${{ steps.version.outputs.version }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            # For main branch pushes, use the auto-generated version
+            type=raw,value=${{ steps.version.outputs.version_no_v }},enable={{is_default_branch}}
+            type=raw,value=latest,enable={{is_default_branch}}
+            # For manual tags
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            # For PRs and other branches
+            type=ref,event=branch,enable=${{ github.ref != 'refs/heads/main' }}
+            type=ref,event=pr
+            type=sha,prefix={{branch}}-
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Containerfile
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Create GitHub Release
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          release_name: Release ${{ steps.version.outputs.version }}
+          body: |
+            **Auto-release ${{ steps.version.outputs.version }}**
+            
+            **Container Image:**
+            - `${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version_no_v }}`
+            - `${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest`
+            
+            **Changes:**
+            - Built from commit: ${{ github.sha }}
+            - Triggered by push to main branch
+            
+            **Artifacts:**
+            - SBOM and security scan results available in workflow artifacts
+          draft: false
+          prerelease: false

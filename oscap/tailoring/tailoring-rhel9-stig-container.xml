@@ -1,0 +1,10 @@
+<?xml version="1.0" ?>
+<xccdf-1.2:Tailoring xmlns:xccdf-1.2="http://checklists.nist.gov/xccdf/1.2" id="xccdf_auto_tailoring_default">
+	<xccdf-1.2:benchmark href="file:///usr/share/xml/scap/ssg/content/ssg-rhel9-ds.xml"/>
+	<xccdf-1.2:version time="2026-06-30T08:14:02.523947">1</xccdf-1.2:version>
+	<xccdf-1.2:Profile id="xccdf_mil.disa.stig_profile_stig_container" extends="xccdf_org.ssgproject.content_profile_stig">
+		<xccdf-1.2:title override="true">DISA RHEL 9 STIG - Container Tailored (Not-Applicable rules deselected)</xccdf-1.2:title>
+		<xccdf-1.2:select idref="xccdf_org.ssgproject.content_rule_network_configure_name_resolution" selected="false"/>
+		<xccdf-1.2:select idref="xccdf_org.ssgproject.content_rule_configure_crypto_policy" selected="false"/>
+	</xccdf-1.2:Profile>
+</xccdf-1.2:Tailoring>

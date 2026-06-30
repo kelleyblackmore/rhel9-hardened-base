@@ -1,0 +1,7 @@
+# Shell scripts and container build files MUST use LF, or they break when
+# executed inside Linux containers (`/bin/bash^M: bad interpreter`).
+* text=auto eol=lf
+*.sh text eol=lf
+Containerfile* text eol=lf
+*.xml text eol=lf
+Makefile text eol=lf

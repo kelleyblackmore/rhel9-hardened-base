@@ -1,0 +1,46 @@
+# =============================================================================
+# DISA RHEL 9 STIG - Not Applicable rules for a CONTAINER base image
+# -----------------------------------------------------------------------------
+# This is the source list for the tailoring ("answer") file. Each ACTIVE line
+# (not starting with #) is a rule id that generate-tailoring.sh feeds to
+# `autotailor --unselect-rule`, which marks the rule "notselected" so it is
+# excluded from the STIG compliance score. The inline comment is the
+# Not-Applicable justification carried into the STIG Viewer checklist / eMASS.
+#
+# IMPORTANT: OpenSCAP already auto-marks ~400 host-only rules "notapplicable"
+# for a container (bootloader, partitions, GUI, kernel sysctls set at boot,
+# auditd running as a service, FIPS kernel mode, etc.) via CPE applicability,
+# so they do NOT need to be listed here. Only list rules that OpenSCAP would
+# otherwise score as FAIL but which a human determines are Not Applicable to a
+# container base image. See not-applicable-rules.md for the full write-up.
+# =============================================================================
+
+# --- ACTIVE: Not Applicable, would otherwise FAIL -----------------------------
+
+# DNS resolver configuration: in a container, /etc/resolv.conf is injected at
+# runtime by the container engine / Kubernetes (kubelet) and cannot be set in
+# the image. SSG ships NO automated remediation for this rule. Not Applicable.
+xccdf_org.ssgproject.content_rule_network_configure_name_resolution
+
+# FIPS:STIG system crypto policy: enforcing it requires the kernel to be in FIPS
+# mode (fips-mode-setup --enable + reboot, modifies bootloader/dracut) and the
+# STIG crypto sub-policy module, neither of which exist inside a container -- the
+# container shares the host/node kernel. `update-crypto-policies --set FIPS:STIG`
+# returns non-zero here ("Unknown policy STIG", "FIPS mode is not enabled").
+# FIPS is a host/node control the container inherits. Not Applicable to the image.
+xccdf_org.ssgproject.content_rule_configure_crypto_policy
+
+# --- TEMPLATE: common container N/A rules (uncomment to deselect if a future ---
+# --- SSG content version stops auto-detecting them as notapplicable) -----------
+# Boot loader is provided by the host/node, not the container image:
+#xccdf_org.ssgproject.content_rule_grub2_password                 # no GRUB in a container
+#xccdf_org.ssgproject.content_rule_grub2_uefi_password            # no UEFI/GRUB in a container
+# Separate partitions are a host storage concern, not an image concern:
+#xccdf_org.ssgproject.content_rule_partition_for_tmp              # filesystem layout owned by host/node
+#xccdf_org.ssgproject.content_rule_partition_for_var_log_audit    # filesystem layout owned by host/node
+# Graphical desktop is never present in a server/container base:
+#xccdf_org.ssgproject.content_rule_dconf_gnome_screensaver_idle_delay  # no GNOME in a container
+# Audit daemon runs on the host/node, not inside an unprivileged container:
+#xccdf_org.ssgproject.content_rule_service_auditd_enabled         # auditd is a host/node service
+# Host-based firewall is enforced by the orchestrator / node, not the image:
+#xccdf_org.ssgproject.content_rule_service_firewalld_enabled      # network policy owned by orchestrator

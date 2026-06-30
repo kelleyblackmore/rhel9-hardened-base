@@ -1,0 +1,22 @@
+# Git
+.git
+.gitignore
+
+# GitHub
+.github
+
+# IDE
+.vscode
+.idea
+
+# Documentation (customize if your app needs markdown files)
+README.md
+LICENSE
+
+# Build artifacts
+*.log
+
+# OpenSCAP scan outputs (never bake reports/ARF into images)
+results/
+**/results/
+oscap/results/

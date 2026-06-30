@@ -35,27 +35,30 @@ need to be in the answer file.
 1. `oscap/not-applicable.rules` — the human-maintained source list. One rule id
    per active line, with the N/A justification as an inline comment.
 2. `oscap/generate-tailoring.sh` — runs **`autotailor`** (from `openscap-utils`)
-   to turn that list into a real XCCDF tailoring file, creating a new tailored
-   profile id `xccdf_mil.disa.stig_profile_stig_container`:
+   to turn that list into a real XCCDF tailoring file (tailored profile id
+   `xccdf_mil.disa.stig_profile_stig_container`), then **embeds each rule's
+   justification as an inline XML comment** next to its `<select>` so the answer
+   file is self-documenting:
 
    ```bash
+   # NOTE: this autotailor uses short flags -o/-p/-u (NOT --output/--unselect-rule)
    autotailor \
-     --output  oscap/tailoring/tailoring-rhel9-stig-container.xml \
-     --new-profile-id xccdf_mil.disa.stig_profile_stig_container \
+     -o oscap/tailoring/tailoring-rhel9-stig-container.xml \
+     -p xccdf_mil.disa.stig_profile_stig_container \
      --title "DISA RHEL 9 STIG - Container Tailored" \
-     --unselect-rule xccdf_org.ssgproject.content_rule_network_configure_name_resolution \
+     -u xccdf_org.ssgproject.content_rule_network_configure_name_resolution \
+     -u xccdf_org.ssgproject.content_rule_configure_crypto_policy \
      /usr/share/xml/scap/ssg/content/ssg-rhel9-ds.xml \
      xccdf_org.ssgproject.content_profile_stig
    ```
-3. `oscap/scan.sh` — evaluates the tailored profile, passing the answer file:
-
-   ```bash
-   oscap xccdf eval \
-     --profile xccdf_mil.disa.stig_profile_stig_container \
-     --tailoring-file oscap/tailoring/tailoring-rhel9-stig-container.xml \
-     --results-arf results-arf.xml --report report.html \
-     /usr/share/xml/scap/ssg/content/ssg-rhel9-ds.xml
-   ```
+3. `oscap/scan.sh` — evaluates the tailored profile, passing the answer file via
+   `--tailoring-file` (see the example under "The answer file..." in the README).
+4. `oscap/generate-na-attestation.py` — produces the **full per-control N/A
+   justification attestation** (`stig-na-attestation.md` + `.csv`) covering all
+   ~414 Not-Applicable controls (the 2 answer-file determinations + the ~412
+   OpenSCAP auto-detected), grouped by category with STIG-ID, CCE, severity, and
+   justification. Generated and uploaded as an artifact by the
+   `oscap-stig-scan.yml` workflow on every push.
 
 ## Rules deselected in the answer file (Not Applicable to a container)
 

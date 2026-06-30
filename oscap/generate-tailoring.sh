@@ -46,5 +46,42 @@ autotailor \
   "$DATASTREAM" \
   "$BASE_PROFILE"
 
+# Make the answer file self-documenting: inject each rule's Not-Applicable
+# justification (the comment block preceding it in not-applicable.rules) as an
+# XML comment immediately before its <select selected="false"/> element.
+# Best-effort: the valid tailoring file is already written by autotailor above,
+# so a missing python3 only means the inline comments are skipped.
+if command -v python3 >/dev/null 2>&1; then
+python3 - "$UNSELECT_LIST" "$OUTPUT" <<'PY' || echo "==> warning: justification comment injection skipped"
+import sys, re
+na_rules, xml_path = sys.argv[1], sys.argv[2]
+PFX = "xccdf_org.ssgproject.content_rule_"
+just, block = {}, []
+for line in open(na_rules, encoding="utf-8"):
+    s = line.strip()
+    if s.startswith("#"):
+        t = s.lstrip("# ").rstrip()
+        if t and not t.startswith("---") and "TEMPLATE" not in t and "ACTIVE" not in t:
+            block.append(t)
+    elif not s:
+        block = []
+    else:
+        just[s.split()[0]] = " ".join(block).strip(); block = []
+xml = open(xml_path, encoding="utf-8").read()
+def repl(m):
+    rid = m.group("rid")
+    j = just.get(rid, "")
+    if not j:
+        return m.group(0)
+    j = j.replace("--", "—")  # '--' is illegal inside XML comments
+    indent = m.group("indent")
+    return f"{indent}<!-- Not Applicable: {j} -->\n{m.group(0)}"
+xml = re.sub(r'(?P<indent>[ \t]*)(?P<sel><xccdf-1\.2:select idref="(?P<rid>[^"]+)" selected="false"\s*/>)',
+             repl, xml)
+open(xml_path, "w", encoding="utf-8", newline="\n").write(xml)
+print(f"==> embedded {sum(1 for r in just if r in xml)} justification comment(s) into the answer file")
+PY
+fi
+
 echo "==> wrote tailoring (answer) file: $OUTPUT"
 echo "==> tailored profile id          : $NEW_PROFILE_ID"

@@ -29,7 +29,7 @@ jobs:
             --build-arg BASE_IMAGE=localhost/rhel9-hardened:latest \
             -t localhost/rhel9-hardened-scan:latest .
 
-      - name: Baseline STIG scan
+      - name: Baseline STIG scan (no answer file)
         run: |
           docker rm -f rhel9-stig-baseline 2>/dev/null || true
           docker run --name rhel9-stig-baseline localhost/rhel9-hardened-scan:latest || true
@@ -37,19 +37,36 @@ jobs:
           docker cp rhel9-stig-baseline:/scan/results/. oscap/results/baseline/
           docker rm -f rhel9-stig-baseline
 
-      - name: Tailored + remediated STIG scan
+      - name: Generate answer file + tailored STIG scan
+        # Regenerates the answer (tailoring) file from oscap/not-applicable.rules
+        # (exercising generate-tailoring.sh + the embedded justifications) and
+        # evaluates the built image against it. REMEDIATE=false: the image must be
+        # compliant as built, not patched at scan time.
         run: |
           docker rm -f rhel9-stig-tailored 2>/dev/null || true
-          docker run --name rhel9-stig-tailored \
-            -e TAILORING_FILE=/scan/oscap/tailoring/tailoring-rhel9-stig-container.xml \
-            -e TAILORING_PROFILE=xccdf_mil.disa.stig_profile_stig_container \
-            -e REMEDIATE=true \
-            localhost/rhel9-hardened-scan:latest || true
-          mkdir -p oscap/results/tailored
+          docker run --name rhel9-stig-tailored --entrypoint bash localhost/rhel9-hardened-scan:latest -c '
+            /usr/local/bin/generate-tailoring.sh /scan/oscap/not-applicable.rules /scan/results/tailoring-rhel9-stig-container.xml
+            TAILORING_FILE=/scan/results/tailoring-rhel9-stig-container.xml \
+            TAILORING_PROFILE=xccdf_mil.disa.stig_profile_stig_container \
+            REMEDIATE=false /usr/local/bin/scan.sh' || true
+          mkdir -p oscap/results/tailored oscap/tailoring
           docker cp rhel9-stig-tailored:/scan/results/. oscap/results/tailored/
+          cp oscap/results/tailored/tailoring-rhel9-stig-container.xml oscap/tailoring/ || true
           docker rm -f rhel9-stig-tailored
 
-      - name: Compliance gate (tailored profile must meet threshold)
+      - name: Generate Not-Applicable justification attestation
+        run: |
+          # Pull the SSG datastream out of the scanner image for STIG-ID/Title columns.
+          docker run --rm --entrypoint cat localhost/rhel9-hardened-scan:latest \
+            /usr/share/xml/scap/ssg/content/ssg-rhel9-ds.xml > ssg-rhel9-ds.xml || true
+          python3 oscap/generate-na-attestation.py \
+            --results oscap/results/baseline/results-xccdf.xml \
+            --na-rules oscap/not-applicable.rules \
+            --datastream ssg-rhel9-ds.xml \
+            --out-md oscap/results/stig-na-attestation.md \
+            --out-csv oscap/results/stig-na-attestation.csv
+
+      - name: Compliance gate + job summary
         env:
           THRESHOLD: '100'
         run: |
@@ -57,16 +74,25 @@ jobs:
           cat "$summary"
           score=$(awk -F': *' '/^score/{gsub(/%/,"",$2); print $2}' "$summary")
           echo "Tailored STIG score: ${score}% (threshold ${THRESHOLD}%)"
+          {
+            echo "## DISA RHEL 9 STIG — tailored scan"
+            echo '```'
+            cat "$summary"
+            echo '```'
+            echo
+            echo "### Not Applicable justification attestation (excerpt)"
+            head -120 oscap/results/stig-na-attestation.md
+          } >> "$GITHUB_STEP_SUMMARY"
           if [ -z "$score" ] || [ "$score" -lt "$THRESHOLD" ]; then
             echo "::error::STIG compliance ${score}% is below threshold ${THRESHOLD}%"
             exit 1
           fi
 
-      - name: Upload OpenSCAP reports (HTML + ARF)
+      - name: Upload OpenSCAP reports, answer file, and attestation
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: oscap-stig-reports
+          name: oscap-stig-artifacts
           path: |
             oscap/results/baseline/report.html
             oscap/results/baseline/results-arf.xml
@@ -74,4 +100,7 @@ jobs:
             oscap/results/tailored/report.html
             oscap/results/tailored/results-arf.xml
             oscap/results/tailored/summary.txt
+            oscap/results/tailored/tailoring-rhel9-stig-container.xml
+            oscap/results/stig-na-attestation.md
+            oscap/results/stig-na-attestation.csv
           retention-days: 30

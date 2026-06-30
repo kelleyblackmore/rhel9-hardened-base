@@ -4,7 +4,9 @@
 	<xccdf-1.2:version time="2026-06-30T08:14:02.523947">1</xccdf-1.2:version>
 	<xccdf-1.2:Profile id="xccdf_mil.disa.stig_profile_stig_container" extends="xccdf_org.ssgproject.content_profile_stig">
 		<xccdf-1.2:title override="true">DISA RHEL 9 STIG - Container Tailored (Not-Applicable rules deselected)</xccdf-1.2:title>
+		<!-- Not Applicable: DNS resolver configuration: in a container, /etc/resolv.conf is injected at runtime by the container engine / Kubernetes (kubelet) and cannot be set in the image. SSG ships NO automated remediation for this rule. Not Applicable. -->
 		<xccdf-1.2:select idref="xccdf_org.ssgproject.content_rule_network_configure_name_resolution" selected="false"/>
+		<!-- Not Applicable: FIPS:STIG system crypto policy: enforcing it requires the kernel to be in FIPS mode (fips-mode-setup —enable + reboot, modifies bootloader/dracut) and the STIG crypto sub-policy module, neither of which exist inside a container — the container shares the host/node kernel. FIPS is a host/node control the container inherits. Not Applicable to the image. -->
 		<xccdf-1.2:select idref="xccdf_org.ssgproject.content_rule_configure_crypto_policy" selected="false"/>
 	</xccdf-1.2:Profile>
 </xccdf-1.2:Tailoring>

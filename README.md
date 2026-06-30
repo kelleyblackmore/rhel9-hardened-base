@@ -76,6 +76,15 @@ oscap xccdf eval \
   /usr/share/xml/scap/ssg/content/ssg-rhel9-ds.xml
 ```
 
+The generated answer file is **self-documenting** — each `<select selected="false">`
+is preceded by an XML comment with its Not-Applicable justification. And a full
+per-control **attestation** (`oscap/generate-na-attestation.py` →
+`stig-na-attestation.md` + `.csv`) enumerates all ~414 Not-Applicable controls —
+the 2 answer-file determinations plus the ~412 OpenSCAP auto-detected — grouped by
+category with STIG-ID, CCE, severity, and justification. Both are built and
+verified in **GitHub Actions** ([`oscap-stig-scan.yml`](.github/workflows/oscap-stig-scan.yml))
+and uploaded as the `oscap-stig-artifacts` artifact on every push.
+
 To add another Not-Applicable rule: add its id (with a justification comment) to
 `oscap/not-applicable.rules` and the matching row to `oscap/not-applicable-rules.md`,
 then re-run the scan.

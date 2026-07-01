@@ -6,6 +6,8 @@ on:
       - main  # Only run on main branch pushes
     tags:
       - 'v*'
+  schedule:
+    - cron: '0 5 * * 1'  # weekly (Mon 05:00 UTC): rebuild to pull the latest patched packages
   workflow_dispatch:  # Allow manual triggering
 
 env:
@@ -75,9 +77,11 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            # For main branch pushes, use the auto-generated version
-            type=raw,value=${{ steps.version.outputs.version_no_v }},enable={{is_default_branch}}
+            # For main branch pushes, use the auto-generated version (push only, not schedule)
+            type=raw,value=${{ steps.version.outputs.version_no_v }},enable=${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
             type=raw,value=latest,enable={{is_default_branch}}
+            # Weekly scheduled rebuild -> datestamped tag (fresh packages)
+            type=schedule,pattern={{date 'YYYYMMDD'}}
             # For manual tags
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}

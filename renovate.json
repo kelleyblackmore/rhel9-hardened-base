@@ -1,0 +1,36 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":dependencyDashboard",
+    ":semanticCommits"
+  ],
+  "description": "Weekly automated updates for the UBI9 base image digest and GitHub Actions.",
+  "timezone": "Etc/UTC",
+  "schedule": ["before 6am on monday"],
+  "labels": ["dependencies"],
+  "pinDigests": true,
+  "separateMinorPatch": true,
+  "packageRules": [
+    {
+      "matchDatasources": ["docker"],
+      "groupName": "container base images",
+      "addLabels": ["container"]
+    },
+    {
+      "matchManagers": ["github-actions"],
+      "groupName": "github actions",
+      "addLabels": ["ci"]
+    },
+    {
+      "description": "Base image is security-sensitive: never auto-merge, always open a PR to review + re-scan.",
+      "matchDatasources": ["docker"],
+      "automerge": false
+    }
+  ],
+  "vulnerabilityAlerts": {
+    "labels": ["security"],
+    "schedule": ["at any time"]
+  },
+  "osvVulnerabilityAlerts": true
+}

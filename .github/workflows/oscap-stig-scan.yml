@@ -5,6 +5,8 @@ on:
     branches: ['**']
   pull_request:
     branches: ['**']
+  schedule:
+    - cron: '0 5 * * 1'  # weekly (Mon 05:00 UTC): re-verify STIG against latest packages/SSG content
   workflow_dispatch:
 
 jobs:

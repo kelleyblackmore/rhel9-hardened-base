@@ -41,12 +41,14 @@ RUN set -eux; \
       jq; \
     # ---- attack-surface reduction: drop non-runtime packages that only add CVEs ----
     # These are not needed in a base image and carry the bulk of the image's CVEs
-    # (editor, debugger, pip/setuptools wheels). Downstream can re-add if needed.
-    # Tolerant: skip any that are absent or protected.
-    for pkg in vim-minimal vim-common gdb gdb-gdbserver \
-               python3-pip-wheel python3-setuptools-wheel; do \
+    # (editor, debugger). Downstream can re-add if needed. Tolerant of absent pkgs.
+    for pkg in vim-minimal vim-common gdb gdb-gdbserver; do \
       if rpm -q "$pkg" >/dev/null 2>&1; then dnf -y remove "$pkg" || true; fi; \
     done; \
+    # Bundled pip/setuptools wheels are data files (not executed at runtime) that
+    # dnf won't drop because python3 is protected. Force-remove them -- they only
+    # add CVEs; downstream that needs pip re-adds them via `dnf install python3-pip`.
+    rpm -e --nodeps python3-pip-wheel python3-setuptools-wheel 2>/dev/null || true; \
     dnf -y clean all; \
     rm -rf /var/cache/dnf /var/cache/yum; \
     rm -rf /tmp/* /var/tmp/*

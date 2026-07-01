@@ -7,12 +7,17 @@ on:
   pull_request:
     branches:
       - '**'  # Run on PRs to any branch
-
+  schedule:
+    - cron: '0 6 * * *'   # daily -- catch upstream fixes as soon as they land
   workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
+  # Gate/report on CVEs that actually have a fix. Unfixable ones (no upstream
+  # patch -- "impossible to update to the latest") are inventoried separately as
+  # accepted risk, not counted against the image.
+  TRIVY_IGNORE_UNFIXED: 'true'
 
 jobs:
   secret-scan:
@@ -93,24 +98,45 @@ jobs:
           format: 'table'
           output: 'trivy-results.txt'
 
-      - name: Display vulnerability summary (non-blocking)
+      # Full inventory INCLUDING unfixed CVEs (override the workflow-level ignore).
+      - name: Inventory all CVEs (incl. unfixed / accepted)
+        env:
+          TRIVY_IGNORE_UNFIXED: 'false'
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:scan-${{ github.sha }}
+          format: 'json'
+          output: 'trivy-all.json'
+
+      - name: FIXABLE gate + accepted-CVE summary
         run: |
-          # Count vulnerabilities by severity
-          CRITICAL_VULNS=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="CRITICAL")] | length' trivy-results.json)
-          HIGH_VULNS=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="HIGH")] | length' trivy-results.json)
-          MEDIUM_VULNS=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="MEDIUM")] | length' trivy-results.json)
-          LOW_VULNS=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="LOW")] | length' trivy-results.json)
-          
-          echo "Vulnerability Summary (Report Only):"
-          echo "Critical: $CRITICAL_VULNS"
-          echo "High: $HIGH_VULNS"
-          echo "Medium: $MEDIUM_VULNS"
-          echo "Low: $LOW_VULNS"
-          
-          echo "Detailed Results:"
-          cat trivy-results.txt
-          
-          echo "Note: This scan is for informational purposes and will not fail the build."
+          # trivy-results.json = FIXABLE only (TRIVY_IGNORE_UNFIXED=true).
+          # trivy-all.json     = everything (fixable + unfixed/accepted).
+          fx() { jq --arg s "$1" '[.Results[]?.Vulnerabilities[]? | select(.Severity==$s)] | length' trivy-results.json; }
+          al() { jq --arg s "$1" '[.Results[]?.Vulnerabilities[]? | select(.Severity==$s)] | length' trivy-all.json; }
+          FC=$(fx CRITICAL); FH=$(fx HIGH); FM=$(fx MEDIUM); FL=$(fx LOW)
+          AC=$(al CRITICAL); AH=$(al HIGH); AM=$(al MEDIUM); AL=$(al LOW)
+          {
+            echo "## Container CVEs (Trivy)"
+            echo "| Severity | Fixable (must be 0) | Accepted (no upstream fix) |"
+            echo "|----------|--------------------:|---------------------------:|"
+            echo "| CRITICAL | $FC | $((AC-FC)) |"
+            echo "| HIGH     | $FH | $((AH-FH)) |"
+            echo "| MEDIUM   | $FM | $((AM-FM)) |"
+            echo "| LOW      | $FL | $((AL-FL)) |"
+            echo
+            echo "Fixable CVEs are gated to 0 (image is updated to the latest available)."
+            echo "Accepted CVEs have **no upstream fix** and are tracked; the daily scan"
+            echo "surfaces them the moment a fix is published."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "Fixable -> CRITICAL:$FC HIGH:$FH MEDIUM:$FM LOW:$FL"
+          echo "Accepted(unfixed) -> CRITICAL:$((AC-FC)) HIGH:$((AH-FH)) MEDIUM:$((AM-FM)) LOW:$((AL-FL))"
+          # Gate: fail if any FIXABLE CRITICAL/HIGH remains (i.e. we did not update).
+          if [ "$FC" -gt 0 ] || [ "$FH" -gt 0 ]; then
+            echo "::error::$FC fixable CRITICAL and $FH fixable HIGH CVEs — update the base to remediate."
+            exit 1
+          fi
+          echo "No fixable CRITICAL/HIGH CVEs."
 
       - name: Upload Trivy scan reports
         uses: actions/upload-artifact@v4
@@ -121,6 +147,7 @@ jobs:
             trivy-results.sarif
             trivy-results.json
             trivy-results.txt
+            trivy-all.json
           retention-days: 30
 
   build-and-scan-enforce:

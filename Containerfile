@@ -39,6 +39,14 @@ RUN set -eux; \
       ca-certificates \
       tzdata \
       jq; \
+    # ---- attack-surface reduction: drop non-runtime packages that only add CVEs ----
+    # These are not needed in a base image and carry the bulk of the image's CVEs
+    # (editor, debugger, pip/setuptools wheels). Downstream can re-add if needed.
+    # Tolerant: skip any that are absent or protected.
+    for pkg in vim-minimal vim-common gdb gdb-gdbserver \
+               python3-pip-wheel python3-setuptools-wheel; do \
+      if rpm -q "$pkg" >/dev/null 2>&1; then dnf -y remove "$pkg" || true; fi; \
+    done; \
     dnf -y clean all; \
     rm -rf /var/cache/dnf /var/cache/yum; \
     rm -rf /tmp/* /var/tmp/*

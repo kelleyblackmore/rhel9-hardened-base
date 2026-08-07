@@ -16,11 +16,17 @@ OpenSCAP scan rather than asserted.
 The image is evaluated against the DISA RHEL 9 STIG profile
 (`xccdf_org.ssgproject.content_profile_stig`) shipped in `scap-security-guide`.
 
-| Scan | Meaning | pass / fail | Score |
-|------|---------|------------:|------:|
-| **Baseline** (plain UBI 9, original) | starting point | 63 / 8 | 88% |
-| **Remediated** (this image, no answer file) | SSG fixes baked in | 69 / 2 | 97% |
-| **Remediated + answer file** (this image, tailored) | 2 N/A rules deselected | 69 / 0 | **100%** |
+| Scan | Meaning | pass / fail | Score | Artifacts |
+|------|---------|------------:|------:|-----------|
+| **Starting point** (plain UBI 9, unhardened) | where we began | 63 / 8 | 88% | historical — not reproduced by the scan scripts |
+| **This image, no answer file** | SSG fixes baked in | 69 / 2 | 97% | `oscap/results/baseline/` |
+| **This image + answer file** (tailored) | 2 N/A rules deselected | 69 / 0 | **100%** | `oscap/results/tailored/` |
+
+> **On the word "baseline".** The scan scripts use it to mean *untailored* — so
+> `oscap/results/baseline/` holds the **hardened** image scanned without the answer file
+> (69 / 2), not the unhardened starting point (63 / 8). The first row above is a historical
+> measurement of stock UBI 9; nothing in `oscap/` regenerates it. Read the counts in
+> `summary.txt`, not the directory name.
 
 OpenSCAP **auto-marks ~412 host-only rules `notapplicable`** for a container
 (bootloader, partitions, GUI, boot-time kernel sysctls, auditd-as-a-service,
@@ -32,8 +38,10 @@ runtime) and `configure_crypto_policy` (FIPS:STIG needs kernel FIPS mode, a
 host/node control). Full write-up:
 [`oscap/not-applicable-rules.md`](oscap/not-applicable-rules.md).
 
-> Live numbers are in `oscap/results/baseline/summary.txt` and
-> `oscap/results/tailored/summary.txt` after you run a scan.
+> Live numbers for rows 2 and 3 are in `oscap/results/baseline/summary.txt` and
+> `oscap/results/tailored/summary.txt` after you run a scan. `oscap/results/` is
+> gitignored, so those are local to whoever ran it; CI publishes the same files as the
+> `oscap-stig-artifacts` artifact.
 
 ---
 
